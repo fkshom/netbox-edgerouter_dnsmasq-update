@@ -32,13 +32,90 @@ end
 def generate_dns_record_file(dns_records, filepath)
   dns_record_lines = dns_records.map do |record|
     '%<address>-15s %<dns_name>s' % record
-#    "#{record[:address]} #{record[:dns_name]}"
+    #    "#{record[:address]} #{record[:dns_name]}"
   end
-  puts "generated dns record file entry"
-  puts "=" * 20
+  puts 'generated dns record file entry'
+  puts '=' * 20
   pp dns_record_lines
 
   File.write(filepath, dns_record_lines.join("\n") + "\n")
+end
+
+class VirtualizationVminterfaces
+  class << self
+    def objects
+      @objects ||= NetboxClientRuby.virtualization.interfaces.to_a
+      @objects
+    end
+
+    def [](id)
+      objects.find do |obj|
+        obj['id'] == id
+      end
+    end
+  end
+end
+
+class DcimInterfaces
+  class << self
+    def objects
+      @objects ||= NetboxClientRuby.dcim.interfaces.to_a
+      @objects
+    end
+
+    def [](id)
+      objects.find do |obj|
+        obj['id'] == id
+      end
+    end
+  end
+end
+
+def dhcp_records_from_netbox(filepath)
+  record_lines = []
+
+  NetboxClientRuby.ipam.ip_addresses.each do |record|
+    ip_address = record['address']
+    lan_group = case ip_address
+                when /^192\.168\.1\./
+                  'LAN1'
+                when /^192\.168\.2\./
+                  'LAN2'
+                else
+                  next
+                end
+
+    hostname = nil
+    interface_name = nil
+    # pp record
+    case record['assigned_object_type']
+    when 'dcim.interface'
+      interface = DcimInterfaces[record['assigned_object_id']]
+      next unless interface['mac_address']
+
+      mac_address = interface['mac_address']
+      hostname = interface['device']['name']
+      interface_name = interface['name']
+    when 'virtualization.vminterface'
+      interface = VirtualizationVminterfaces[record['assigned_object_id']]
+      # pp interface
+      next unless interface['mac_address']
+
+      mac_address = interface['mac_address']
+      hostname = interface['virtual_machine']['name']
+      interface_name = interface['name']
+    else
+      warn "#{ip_address} has unknown assigned_object_type: #{record['assigned_object_type']}"
+    end
+
+    record_lines << format("#{mac_address},set:#{lan_group},%<ipa>-14s  # #{hostname} (#{interface_name})",
+                           ipa: ip_address.to_s[%r{\A[^/]+}])
+  end
+  puts 'generated dns record file entry'
+  puts '=' * 20
+  pp record_lines
+
+  File.write(filepath, record_lines.join("\n") + "\n")
 end
 
 def save_dns_records_to_edge_router(dns_records)
@@ -58,18 +135,44 @@ def save_dns_records_to_edge_router(dns_records)
   )
   puts "Upadated '/config/dnsmasq-addn-hosts.d/netbox_defined' on edge router"
 
+  # Net::SSH.start(ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'], password: ENV['EDGEROUTER_PASS']) do |ssh|
+  #   ssh.exec!('sudo /etc/init.d/dnsmasq systemd-reload')
+  # end
+  # puts 'reload dnsmasq'
+end
+
+def save_dhcp_records_to_edge_router
+  filepath = '/tmp/abcde'
+  dhcp_records_from_netbox(filepath)
+
+  # set service dns forwarding options addn-hosts=/config/dnsmasq.hosts.d
+  Net::SSH.start(ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'], password: ENV['EDGEROUTER_PASS']) do |ssh|
+    ssh.exec!('mkdir -p /config/dnsmasq-addn-hosts.d/')
+    ssh.exec!('mkdir -p /config/dnsmasq-dhcp.d/')
+  end
+
+  Net::SCP.upload!(
+    ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'],
+    filepath, '/config/dnsmasq-dhcp.d/netbox_defined',
+    ssh: { password: ENV['EDGEROUTER_PASS'] }
+  )
+  puts "Upadated '/config/dnsmasq-dhcp.d/netbox_defined' on edge router"
+
   Net::SSH.start(ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'], password: ENV['EDGEROUTER_PASS']) do |ssh|
     ssh.exec!('sudo /etc/init.d/dnsmasq systemd-reload')
   end
-  puts "reload dnsmasq"
+  puts 'reload dnsmasq'
 end
 
 def main
+  require 'pry'
   dns_records = dns_records_from_netbox
-  puts "get from netbox"
-  puts "=" * 20
+  puts 'get from netbox'
+  puts '=' * 20
   pp dns_records
   save_dns_records_to_edge_router(dns_records)
+
+  save_dhcp_records_to_edge_router
 end
 
 main
