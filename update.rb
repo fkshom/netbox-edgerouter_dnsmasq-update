@@ -47,15 +47,17 @@ def save_dns_records_to_edge_router(dns_records)
 
   # set service dns forwarding options addn-hosts=/config/dnsmasq.hosts.d
   Net::SSH.start(ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'], password: ENV['EDGEROUTER_PASS']) do |ssh|
-    ssh.exec!('mkdir -p /config/dnsmasq.hosts.d')
+    ssh.exec!('mkdir -p /config/dnsmasq-addn-hosts.d/')
+    ssh.exec!('mkdir -p /config/dnsmasq-dhcp.d/')
   end
 
   Net::SCP.upload!(
     ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'],
-    filepath, '/config/dnsmasq.hosts.d/dnsmasq-hosts-config.conf',
+    filepath, '/config/dnsmasq-addn-hosts.d/netbox_defined',
     ssh: { password: ENV['EDGEROUTER_PASS'] }
   )
-  puts "Upadated '/config/dnsmasq.hosts.d/dnsmasq-hosts-config.conf' on edge router"
+  puts "Upadated '/config/dnsmasq-addn-hosts.d/netbox_defined' on edge router"
+
   Net::SSH.start(ENV['EDGEROUTER_HOSTNAME'], ENV['EDGEROUTER_USER'], password: ENV['EDGEROUTER_PASS']) do |ssh|
     ssh.exec!('sudo /etc/init.d/dnsmasq systemd-reload')
   end
