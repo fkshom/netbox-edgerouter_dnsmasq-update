@@ -18,6 +18,20 @@ NetboxClientRuby.configure do |config|
   # config.faraday.logger = :logger # built-in options: :logger, :detailed_logger; default: nil
 end
 
+def dns_service_records_from_netbox
+  NetboxClientRuby.ipam.services.inject([]) do |result, service|
+    service.ipaddresses.to_a.each do |ipaddress|
+      result << {
+        dns_name: service.name,  # xx or xx.home.fukuda.dev
+        address: ipaddress.address.to_s[%r{\A[^/]+}]
+      }
+    end
+    result
+  end.reject do |record|
+    record[:dns_name] == ''
+  end
+end
+
 def dns_records_from_netbox
   NetboxClientRuby.ipam.ip_addresses.map do |ip_address|
     {
@@ -31,7 +45,7 @@ end
 
 def generate_dns_record_file(dns_records, filepath)
   dns_record_lines = dns_records.map do |record|
-    '%<address>-15s %<dns_name>s' % record
+    '%<address>-30s %<dns_name>s' % record
     #    "#{record[:address]} #{record[:dns_name]}"
   end
   puts 'generated dns record file entry'
@@ -175,4 +189,18 @@ def main
   save_dhcp_records_to_edge_router
 end
 
-main
+def main1
+  require 'pry'
+  dns_service_records = dns_service_records_from_netbox
+  dns_records = dns_records_from_netbox
+  dns_all_records = dns_service_records + dns_records
+  puts 'get from netbox'
+  puts '=' * 20
+  pp dns_all_records
+  save_dns_records_to_edge_router(dns_all_records)
+  
+  save_dhcp_records_to_edge_router
+end
+
+main1
+
