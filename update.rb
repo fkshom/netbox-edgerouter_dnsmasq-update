@@ -277,7 +277,7 @@ def save_dhcp_records_to_dnsmaster
   puts "Upadated '/etc/dnsmasq.dhcp/netbox_defined' on dnsmaster"
 
   Net::SSH.start(ENV['DNSMASTER_HOSTNAME'], ENV['DNSMASTER_USER'], password: ENV['DNSMASTER_PASS']) do |ssh|
-    ssh.exec!('sudo systectl restart reload')
+    ssh.exec!('sudo systemctl restart dnsmasq')
   end
   puts 'reload dnsmasq'
 end
