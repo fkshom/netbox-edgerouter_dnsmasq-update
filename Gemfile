@@ -13,3 +13,4 @@ gem 'bcrypt_pbkdf'
 gem 'net-scp'
 gem 'solargraph', group: :development
 gem 'pry', group: :development
+gem 'bunny'

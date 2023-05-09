@@ -2,6 +2,7 @@ require 'netbox-client-ruby'
 require 'net/ssh'
 require 'ed25519'
 require 'net/scp'
+require 'bunny'
 require 'dotenv'
 Dotenv.load
 
@@ -282,8 +283,33 @@ def save_dhcp_records_to_dnsmaster
   puts 'reload dnsmasq'
 end
 
+def watch
+  connection = Bunny.new(host: ENV['MQ_HOST'], vhost: ENV['MQ_VHOST'], user: ENV['MQ_USER'], password: ENV['MQ_PASS'])
+  connection.start
+  channel = connection.create_channel
+  conn = connection
+  ch  = conn.create_channel
+  ch.prefetch(1)
+
+  x = ENV['MQ_EXCHANGE']
+  q = ch.queue("", :auto_delete => true).bind(x)
+  q.subscribe(manual_ack: true, block: true) do |delivery_info, metadata, payload|
+    puts :start
+    q.purge
+    main1
+    ch.acknowledge(delivery_info.delivery_tag, false)
+  end
+
+  loop do
+    sleep 10000
+  end
+
+  conn.close
+end
+
 def main
   require 'pry'
+  
   dns_records = dns_records_from_netbox
   puts 'get from netbox'
   puts '=' * 20
@@ -308,4 +334,5 @@ def main1
 end
 
 main1
+watch
 

@@ -1,3 +1,3 @@
 #!/usr/bin/env bash
 
-docker compose run --rm app bundle exec ruby update.rb
+docker compose run --build --rm app bundle exec ruby update.rb
